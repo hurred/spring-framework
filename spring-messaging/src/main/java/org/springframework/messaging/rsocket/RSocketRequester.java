@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2019 the original author or authors.
+ * Copyright 2002-2020 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -169,20 +169,41 @@ public interface RSocketRequester {
 		RSocketRequester.Builder setupMetadata(Object value, @Nullable MimeType mimeType);
 
 		/**
-		 * Provide {@link RSocketStrategies} to use.
-		 * <p>By default this is based on default settings of
-		 * {@link RSocketStrategies.Builder} but may be further customized via
-		 * {@link #rsocketStrategies(Consumer)}.
+		 * Provide the {@link RSocketStrategies} to use.
+		 * <p>This is useful for changing the default settings, yet still allowing
+		 * further customizations via {@link #rsocketStrategies(Consumer)}.
+		 * If not set, defaults are obtained from {@link RSocketStrategies#builder()}.
+		 * @param strategies the strategies to use
 		 */
 		RSocketRequester.Builder rsocketStrategies(@Nullable RSocketStrategies strategies);
 
 		/**
 		 * Customize the {@link RSocketStrategies}.
-		 * <p>By default this starts out as {@link RSocketStrategies#builder()}.
-		 * However if strategies were {@link #rsocketStrategies(RSocketStrategies) set}
-		 * explicitly, then they are {@link RSocketStrategies#mutate() mutated}.
+		 * <p>Allows further customization on {@link RSocketStrategies},
+		 * mutating them if they were {@link #rsocketStrategies(RSocketStrategies) set},
+		 * or starting from {@link RSocketStrategies#builder()} defaults}.
 		 */
 		RSocketRequester.Builder rsocketStrategies(Consumer<RSocketStrategies.Builder> configurer);
+
+		/**
+		 * Callback to configure the {@code RSocketConnector} directly.
+		 * <ul>
+		 * <li>The data and metadata mime types cannot be set directly
+		 * on the {@code RSocketConnector} and will be overridden. Use the
+		 * shortcuts {@link #dataMimeType(MimeType)} and
+		 * {@link #metadataMimeType(MimeType)} on this builder instead.
+		 * <li>The frame decoder also cannot be set directly and instead is set
+		 * to match the configured {@code DataBufferFactory}.
+		 * <li>For the
+		 * {@link io.rsocket.core.RSocketConnector#setupPayload(Payload)
+		 * setupPayload}, consider using methods on this builder to specify the
+		 * route, other metadata, and data as Object values to be encoded.
+		 * <li>To configure client side responding, see
+		 * {@link RSocketMessageHandler#responder(RSocketStrategies, Object...)}.
+		 * </ul>
+		 * @since 5.2.6
+		 */
+		RSocketRequester.Builder rsocketConnector(RSocketConnectorConfigurer configurer);
 
 		/**
 		 * Callback to configure the {@code ClientRSocketFactory} directly.
@@ -200,7 +221,11 @@ public interface RSocketRequester {
 		 * <li>To configure client side responding, see
 		 * {@link RSocketMessageHandler#clientResponder(RSocketStrategies, Object...)}.
 		 * </ul>
+		 * @deprecated as of 5.2.6 following the deprecation of
+		 * {@link io.rsocket.RSocketFactory.ClientRSocketFactory RSocketFactory.ClientRSocketFactory}
+		 * in RSocket 1.0 RC7. Please, use {@link #rsocketConnector(RSocketConnectorConfigurer)}.
 		 */
+		@Deprecated
 		RSocketRequester.Builder rsocketFactory(ClientRSocketFactoryConfigurer configurer);
 
 		/**
@@ -250,6 +275,12 @@ public interface RSocketRequester {
 		 * @throws IllegalArgumentException if not using composite metadata.
 		 */
 		RequestSpec metadata(Consumer<MetadataSpec<?>> configurer);
+
+		/**
+		 * Perform a {@link RSocket#metadataPush(Payload) metadataPush}.
+		 * @since 5.3
+		 */
+		Mono<Void> sendMetadata();
 
 		/**
 		 * Provide payload data for the request. This can be one of:
@@ -319,7 +350,12 @@ public interface RSocketRequester {
 	interface RetrieveSpec {
 
 		/**
-		 * Perform a {@link RSocket#fireAndForget fireAndForget}.
+		 * Perform a {@link RSocket#fireAndForget fireAndForget} sending the
+		 * provided data and metadata.
+		 * @return a completion that indicates if the payload was sent
+		 * successfully or not. Note, however that is a one-way send and there
+		 * is no indication of whether or how the even was handled on the
+		 * remote end.
 		 */
 		Mono<Void> send();
 
